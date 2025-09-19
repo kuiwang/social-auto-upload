@@ -1,0 +1,84 @@
+name: Sync to Gitee
+
+# 触发条件：当main分支有推送，或每小时定时执行
+on:
+  push:
+    branches: [ main, master ]  # 根据实际主分支名称调整
+  schedule:
+    - cron: '0 0 * * *'  # 每天同步一次 , '0 0 * * *'  # 每天同步一次
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    #timeout-minutes: 60  # 设置超时时间
+
+    steps:
+      # 第一步：配置SSH密钥
+      - name: Setup SSH keys
+        run: |
+          # 创建.ssh目录
+          mkdir -p ~/.ssh
+          # 配置SSH密钥
+          echo "${{ secrets.GITEE_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # 配置SSH已知主机
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          ssh-keyscan gitee.com >> ~/.ssh/known_hosts
+          
+          # 新增：测试SSH连接到GitHub
+          echo "测试连接到GitHub..."
+          echo "测试连接到GitHub..."
+          if ssh -T git@github.com; then
+            echo "GitHub SSH连接测试成功"
+          else
+            echo "GitHub SSH连接测试失败"
+          fi
+          
+          # 新增：测试SSH连接到Gitee（可选）
+          echo "测试连接到Gitee..."
+          if ssh -T git@gitee.com; then
+            echo "gitee SSH连接测试成功"
+          else
+            echo "gitee SSH连接测试失败"
+          fi
+          
+      # 第一步：检出代码
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 拉取所有历史，确保完整同步
+          ref: main  # 主分支名称，根据实际情况调整
+      # 第二步：添加原仓库作为上游仓库
+      - name: Add upstream repository
+        run: |
+          git remote add upstream https://github.com/dreammis/social-auto-upload.git
+          git fetch upstream
+      # 第三步：同步原仓库的最新代码到你的Fork
+      - name: Sync with upstream
+        run: |
+          git checkout main
+          git merge upstream/main  # 合并原仓库的main分支
+          git push origin main     # 推送到你的Fork仓库
+
+      # 第二步：同步到Gitee
+      - name: Sync to Gitee
+        uses: wearerequired/git-mirror-action@v1
+        env:
+          # 使用之前配置的SSH私钥
+          SSH_PRIVATE_KEY: ${{ secrets.GITEE_SSH_KEY }}
+        with:
+          # 源仓库地址（当前GitHub仓库）
+          source-repo: "git@github.com:kuiwang/social-auto-upload.git"
+          # 目标仓库地址（Gitee）
+          destination-repo: "git@gitee.com:alifred/social-auto-upload.git"
+
+      # 第四步：同步标签（可选）
+      - name: Sync tags to all remotes
+        run: |
+          git remote add gitee git@gitee.com:alifred/ai-agents-for-beginners.git
+          git remote add gitcode git@gitcode.com:alifred/ai-agents-for-beginners.git
+          git push gitee --tags
+          git push gitcode --tags
+        env:
+          GIT_SSH_COMMAND: "ssh -i /tmp/ssh_private_key"
