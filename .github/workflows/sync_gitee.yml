@@ -76,9 +76,7 @@ jobs:
       # 第四步：同步标签（可选）
       - name: Sync tags to all remotes
         run: |
-          git remote add gitee git@gitee.com:alifred/ai-agents-for-beginners.git
-          git remote add gitcode git@gitcode.com:alifred/ai-agents-for-beginners.git
+          git remote add gitee git@gitee.com:alifred/social-auto-upload.git
           git push gitee --tags
-          git push gitcode --tags
         env:
           GIT_SSH_COMMAND: "ssh -i /tmp/ssh_private_key"
