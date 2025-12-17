@@ -5,14 +5,14 @@ from playwright.async_api import Playwright, async_playwright, Page
 import os
 import asyncio
 
-from conf import LOCAL_CHROME_PATH
+from conf import LOCAL_CHROME_PATH, LOCAL_CHROME_HEADLESS
 from utils.base_social_media import set_init_script
 from utils.log import douyin_logger
 
 
 async def cookie_auth(account_file):
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True)
+        browser = await playwright.chromium.launch(headless=LOCAL_CHROME_HEADLESS)
         context = await browser.new_context(storage_state=account_file)
         context = await set_init_script(context)
         # 创建一个新的页面
@@ -48,7 +48,7 @@ async def douyin_setup(account_file, handle=False):
 async def douyin_cookie_gen(account_file):
     async with async_playwright() as playwright:
         options = {
-            'headless': False
+            'headless': LOCAL_CHROME_HEADLESS
         }
         # Make sure to run headed.
         browser = await playwright.chromium.launch(**options)
@@ -72,6 +72,7 @@ class DouYinVideo(object):
         self.account_file = account_file
         self.date_format = '%Y年%m月%d日 %H:%M'
         self.local_executable_path = LOCAL_CHROME_PATH
+        self.headless = LOCAL_CHROME_HEADLESS
         self.thumbnail_path = thumbnail_path
         self.productLink = productLink
         self.productTitle = productTitle
@@ -99,9 +100,9 @@ class DouYinVideo(object):
     async def upload(self, playwright: Playwright) -> None:
         # 使用 Chromium 浏览器启动一个浏览器实例
         if self.local_executable_path:
-            browser = await playwright.chromium.launch(headless=False, executable_path=self.local_executable_path)
+            browser = await playwright.chromium.launch(headless=self.headless, executable_path=self.local_executable_path)
         else:
-            browser = await playwright.chromium.launch(headless=False)
+            browser = await playwright.chromium.launch(headless=self.headless)
         # 创建一个浏览器上下文，使用指定的 cookie 文件
         context = await browser.new_context(storage_state=f"{self.account_file}")
         context = await set_init_script(context)
@@ -158,13 +159,6 @@ class DouYinVideo(object):
             await page.type(css_selector, "#" + tag)
             await page.press(css_selector, "Space")
         douyin_logger.info(f'总共添加{len(self.tags)}个话题')
-
-        if self.productLink and self.productTitle:
-            douyin_logger.info(f'  [-] 正在设置商品链接...')
-            await asyncio.sleep(1)
-            await self.set_product_link(page, self.productLink, self.productTitle)
-            douyin_logger.info(f'  [+] 完成设置商品链接...')
-
         while True:
             # 判断重新上传按钮是否存在，如果不存在，代表视频正在上传，则等待
             try:
@@ -183,6 +177,11 @@ class DouYinVideo(object):
             except:
                 douyin_logger.info("  [-] 正在上传视频中...")
                 await asyncio.sleep(2)
+
+        if self.productLink and self.productTitle:
+            douyin_logger.info(f'  [-] 正在设置商品链接...')
+            await self.set_product_link(page, self.productLink, self.productTitle)
+            douyin_logger.info(f'  [+] 完成设置商品链接...')
         
         #上传视频封面
         await self.set_thumbnail(page, self.thumbnail_path)
@@ -214,6 +213,8 @@ class DouYinVideo(object):
                 douyin_logger.success("  [-]视频发布成功")
                 break
             except:
+                # 尝试处理封面问题
+                await self.handle_auto_video_cover(page)
                 douyin_logger.info("  [-] 视频正在发布中...")
                 await page.screenshot(full_page=True)
                 await asyncio.sleep(0.5)
@@ -224,21 +225,62 @@ class DouYinVideo(object):
         # 关闭浏览器上下文和浏览器实例
         await context.close()
         await browser.close()
-    
+
+    async def handle_auto_video_cover(self, page):
+        """
+        处理必须设置封面的情况，点击推荐封面的第一个
+        """
+        # 1. 判断是否出现 "请设置封面后再发布" 的提示
+        # 必须确保提示是可见的 (is_visible)，因为 DOM 中可能存在隐藏的历史提示
+        if await page.get_by_text("请设置封面后再发布").first.is_visible():
+            print("  [-] 检测到需要设置封面提示...")
+
+            # 2. 定位“智能推荐封面”区域下的第一个封面
+            # 使用 class^= 前缀匹配，避免 hash 变化导致失效
+            recommend_cover = page.locator('[class^="recommendCover-"]').first
+
+            if await recommend_cover.count():
+                print("  [-] 正在选择第一个推荐封面...")
+                try:
+                    await recommend_cover.click()
+                    await asyncio.sleep(1)  # 等待选中生效
+
+                    # 3. 处理可能的确认弹窗 "是否确认应用此封面？"
+                    # 并不一定每次都会出现，健壮性判断：如果出现弹窗，则点击确定
+                    confirm_text = "是否确认应用此封面？"
+                    if await page.get_by_text(confirm_text).first.is_visible():
+                        print(f"  [-] 检测到确认弹窗: {confirm_text}")
+                        # 直接点击“确定”按钮，不依赖脆弱的 CSS 类名
+                        await page.get_by_role("button", name="确定").click()
+                        print("  [-] 已点击确认应用封面")
+                        await asyncio.sleep(1)
+
+                    print("  [-] 已完成封面选择流程")
+                    return True
+                except Exception as e:
+                    print(f"  [-] 选择封面失败: {e}")
+
+        return False
+
     async def set_thumbnail(self, page: Page, thumbnail_path: str):
         if thumbnail_path:
+            douyin_logger.info('  [-] 正在设置视频封面...')
             await page.click('text="选择封面"')
-            await page.wait_for_selector("div.semi-modal-content:visible")
+            await page.wait_for_selector("div.dy-creator-content-modal")
             await page.click('text="设置竖封面"')
             await page.wait_for_timeout(2000)  # 等待2秒
             # 定位到上传区域并点击
             await page.locator("div[class^='semi-upload upload'] >> input.semi-upload-hidden-input").set_input_files(thumbnail_path)
             await page.wait_for_timeout(2000)  # 等待2秒
-            await page.locator("div[class^='extractFooter'] button:visible:has-text('完成')").click()
+            await page.locator("div#tooltip-container button:visible:has-text('完成')").click()
             # finish_confirm_element = page.locator("div[class^='confirmBtn'] >> div:has-text('完成')")
             # if await finish_confirm_element.count():
             #     await finish_confirm_element.click()
             # await page.locator("div[class^='footer'] button:has-text('完成')").click()
+            douyin_logger.info('  [+] 视频封面设置完成！')
+            # 等待封面设置对话框关闭
+            await page.wait_for_selector("div.extractFooter", state='detached')
+            
 
     async def set_location(self, page: Page, location: str = ""):
         if not location:
@@ -257,6 +299,7 @@ class DouYinVideo(object):
         """处理商品编辑弹窗"""
 
         await page.wait_for_timeout(2000)
+        await page.wait_for_selector('input[placeholder="请输入商品短标题"]', timeout=10000)
         short_title_input = page.locator('input[placeholder="请输入商品短标题"]')
         if not await short_title_input.count():
             douyin_logger.error("[-] 未找到商品短标题输入框")
@@ -290,8 +333,10 @@ class DouYinVideo(object):
         
     async def set_product_link(self, page: Page, product_link: str, product_title: str):
         """设置商品链接功能"""
+        await page.wait_for_timeout(2000)  # 等待2秒
         try:
             # 定位"添加标签"文本，然后向上导航到容器，再找到下拉框
+            await page.wait_for_selector('text=添加标签', timeout=10000)
             dropdown = page.get_by_text('添加标签').locator("..").locator("..").locator("..").locator(".semi-select").first
             if not await dropdown.count():
                 douyin_logger.error("[-] 未找到标签下拉框")
@@ -321,6 +366,15 @@ class DouYinVideo(object):
                 return False
             await add_button.click()
             douyin_logger.debug("[+] 成功点击'添加链接'按钮")
+            ## 如果链接不可用
+            await page.wait_for_timeout(2000)
+            error_modal = page.locator('text=未搜索到对应商品')
+            if await error_modal.count():
+                confirm_button = page.locator('button:has-text("确定")')
+                await confirm_button.click()
+                # await page.wait_for_selector('.semi-modal-content', state='hidden', timeout=5000)
+                douyin_logger.error("[-] 商品链接无效")
+                return False
 
             # 填写商品短标题
             if not await self.handle_product_dialog(page, product_title):

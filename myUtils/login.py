@@ -7,7 +7,7 @@ from myUtils.auth import check_cookie
 from utils.base_social_media import set_init_script
 import uuid
 from pathlib import Path
-from conf import BASE_DIR
+from conf import BASE_DIR, LOCAL_CHROME_HEADLESS
 
 # 抖音登录
 async def douyin_cookie_gen(id,status_queue):
@@ -18,7 +18,7 @@ async def douyin_cookie_gen(id,status_queue):
             url_changed_event.set()
     async with async_playwright() as playwright:
         options = {
-            'headless': False
+            'headless': LOCAL_CHROME_HEADLESS
         }
         # Make sure to run headed.
         browser = await playwright.chromium.launch(**options)
@@ -50,7 +50,10 @@ async def douyin_cookie_gen(id,status_queue):
             return None
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        # 确保cookiesFile目录存在
+        cookies_dir = Path(BASE_DIR / "cookiesFile")
+        cookies_dir.mkdir(exist_ok=True)
+        await context.storage_state(path=cookies_dir / f"{uuid_v1}.json")
         result = await check_cookie(3, f"{uuid_v1}.json")
         if not result:
             status_queue.put("500")
@@ -85,7 +88,7 @@ async def get_tencent_cookie(id,status_queue):
             'args': [
                 '--lang en-GB'
             ],
-            'headless': False,  # Set headless option here
+            'headless': LOCAL_CHROME_HEADLESS,  # Set headless option here
         }
         # Make sure to run headed.
         browser = await playwright.chromium.launch(**options)
@@ -125,7 +128,10 @@ async def get_tencent_cookie(id,status_queue):
             return None
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        # 确保cookiesFile目录存在
+        cookies_dir = Path(BASE_DIR / "cookiesFile")
+        cookies_dir.mkdir(exist_ok=True)
+        await context.storage_state(path=cookies_dir / f"{uuid_v1}.json")
         result = await check_cookie(2,f"{uuid_v1}.json")
         if not result:
             status_queue.put("500")
@@ -159,7 +165,7 @@ async def get_ks_cookie(id,status_queue):
             'args': [
                 '--lang en-GB'
             ],
-            'headless': False,  # Set headless option here
+            'headless': LOCAL_CHROME_HEADLESS,  # Set headless option here
         }
         # Make sure to run headed.
         browser = await playwright.chromium.launch(**options)
@@ -196,7 +202,10 @@ async def get_ks_cookie(id,status_queue):
             return None
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        # 确保cookiesFile目录存在
+        cookies_dir = Path(BASE_DIR / "cookiesFile")
+        cookies_dir.mkdir(exist_ok=True)
+        await context.storage_state(path=cookies_dir / f"{uuid_v1}.json")
         result = await check_cookie(4, f"{uuid_v1}.json")
         if not result:
             status_queue.put("500")
@@ -232,7 +241,7 @@ async def xiaohongshu_cookie_gen(id,status_queue):
             'args': [
                 '--lang en-GB'
             ],
-            'headless': False,  # Set headless option here
+            'headless': LOCAL_CHROME_HEADLESS,  # Set headless option here
         }
         # Make sure to run headed.
         browser = await playwright.chromium.launch(**options)
@@ -267,7 +276,10 @@ async def xiaohongshu_cookie_gen(id,status_queue):
             return None
         uuid_v1 = uuid.uuid1()
         print(f"UUID v1: {uuid_v1}")
-        await context.storage_state(path=Path(BASE_DIR / "cookiesFile" / f"{uuid_v1}.json"))
+        # 确保cookiesFile目录存在
+        cookies_dir = Path(BASE_DIR / "cookiesFile")
+        cookies_dir.mkdir(exist_ok=True)
+        await context.storage_state(path=cookies_dir / f"{uuid_v1}.json")
         result = await check_cookie(1, f"{uuid_v1}.json")
         if not result:
             status_queue.put("500")
